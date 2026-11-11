@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { extractMandate, extractMandateHeuristic, MandateExtractionError, MandateRules } from "@/lib/mandate";
+import { budgetIsStated, extractMandate, extractMandateHeuristic, MandateExtractionError, MandateRules } from "@/lib/mandate";
 import { SCENARIOS } from "@/lib/scenarios";
 
 describe("mandate extraction (rule-based fallback)", () => {
@@ -43,6 +43,14 @@ describe("mandate extraction (rule-based fallback)", () => {
 
   it("caps the budget for the sandbox prototype", () => {
     expect(() => extractMandateHeuristic("a webcam under $5000")).toThrow();
+  });
+
+  it("only accepts a budget that literally appears in the user's words", () => {
+    expect(budgetIsStated("webcam under $60", 60)).toBe(true);
+    expect(budgetIsStated("budget of 85.50", 85.5)).toBe(true);
+    expect(budgetIsStated("up to $1,000 please", 1000)).toBe(true);
+    expect(budgetIsStated("buy me something nice", 100)).toBe(false);
+    expect(budgetIsStated("a webcam for my 2 kids under $60", 100)).toBe(false);
   });
 
   it("falls back to the parser when no LLM key is set", async () => {

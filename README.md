@@ -115,7 +115,7 @@ With no Gemini key, mandate extraction uses a rule-based parser and the agent re
 
 | Use | Model | Why AI is needed | Fallback |
 |---|---|---|---|
-| Mandate extraction | Gemini Flash via Vercel AI SDK, structured output | Turns free-text intent into typed rules | Rule-based parser |
+| Mandate extraction | Gemini Flash-Lite via Vercel AI SDK, structured output | Turns free-text intent into typed rules | Rule-based parser |
 | Shopping agent | Same model, tool calling | Searches, compares, explains trade-offs | Cached trace / rule-based shopper |
 | Injection scanner | Same model, classifier prompt | Hidden instructions vary too much for patterns alone | Patterns only |
 | Arbiter | Same model, evidence-quoting prompt | Judges free-text ambiguity | Manual review |
@@ -142,6 +142,7 @@ Notes on the free tier:
 - The hosted demo sleeps after 15 minutes idle, so the first load can take about a minute.
 - The filesystem is ephemeral and the SQLite file is wiped on boot, so every visitor gets a clean state. Set `SENTINEL_KEEP_DB=1` to keep data.
 - If the LLM quota runs out, the agent falls back to the cached traces (recorded in the flight recorder as `agent_fallback`), so the PayPal flow still runs live.
+- Use a **flash-lite** model on the free tier. Plain `gemini-3.5-flash` allows only 20 requests per day, and one live scenario uses 5–7.
 
 ## 6. Project structure
 
@@ -222,6 +223,10 @@ PayPal needs a public URL for webhooks. Locally, use a tunnel (e.g. `cloudflared
 
 Log in at checkout with the sandbox **buyer** account. Never use real PayPal credentials.
 
+### Deploy (Render, free)
+
+`render.yaml` is a Render Blueprint for one free web service. In Render, choose **New → Blueprint**, pick this repo, and paste the secret values it asks for (the same variables as `.env.local`). Health check: `/api/health`. After the first deploy, create the PayPal webhook for `<service-url>/api/webhooks/paypal` and set `PAYPAL_WEBHOOK_ID`.
+
 ### Checks
 
 ```bash
@@ -238,6 +243,8 @@ npm run e2e                   # drives all scenarios through the HTTP API
 | 1 | Safe purchase | Intent becomes a mandate. The user approves a $60 hold. The agent picks a $51.84 webcam. All rules pass. $51.84 captured, $8.16 released. Order and capture ids shown. |
 | 2 | Blocked purchase | The top (sponsored) listing hides an instruction telling the agent to add a protection plan, and the total becomes $74.39. R1, R3 and R6 fail; R7 also fails because the total exceeds the $60 hold. Authorization voided. No money moves. |
 | 3 | Slipped through, then settled | The agent buys a webcam whose listing says "Windows only". The user clicks "Not what I asked for". The arbiter quotes the listing line and the mandate line: agent fault. Buyer refunded; operator bond pays the merchant. |
+
+With a live Gemini agent, scenarios 2 and 3 usually do **not** reproduce: in testing, the live agent ignored the hidden instruction and avoided the "Windows only" webcam. Use **Cached trace** on the run page for those two, so the failure the firewall and arbiter handle happens on cue.
 
 Extra paths on the run page: **"Demo: merchant edits the listing"** shows merchant fault, and a custom intent without "MacBook" shows user responsibility.
 

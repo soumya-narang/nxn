@@ -25,8 +25,15 @@ export type MandateRules = z.infer<typeof MandateRules>;
 
 /** What the LLM fills in. Dollars, not cents: models are bad at unit conversion. */
 const ExtractedMandate = z.object({
-  category: z.enum(CATEGORIES as [string, ...string[]]).describe("Product category from the store's list"),
-  ceilingUsd: z.number().positive().describe("Maximum total the user will pay, in US dollars, including tax and shipping"),
+  category: z
+    .enum(CATEGORIES as [string, ...string[]])
+    .nullable()
+    .describe("Product category from the store's list. null if the user did not clearly ask for one of them"),
+  ceilingUsd: z
+    .number()
+    .positive()
+    .nullable()
+    .describe("Maximum total the user will pay, in US dollars, including tax and shipping. null if the user stated no amount. Never guess"),
   maxDeliveryDays: z
     .number()
     .int()
@@ -63,9 +70,14 @@ export async function extractMandate(intent: string): Promise<ExtractionResult> 
           `Store categories: ${CATEGORIES.join(", ")}. Sellers: ${SELLERS.map((s) => `${s.id} (${s.name})`).join(", ")}.`,
         prompt: intent,
       });
+      const problems: string[] = [];
+      if (!output.category) problems.push(`Could not find a product category. Store categories: ${CATEGORIES.join(", ")}.`);
+      // A budget is the one thing that must never be invented: it has to appear in the user's own words.
+      if (output.ceilingUsd === null || !budgetIsStated(intent, output.ceilingUsd)) problems.push("Could not find a budget. Say e.g. 'under $60'.");
+      if (problems.length) throw new MandateExtractionError(problems);
       const rules = MandateRules.parse({
         category: output.category,
-        ceilingCents: Math.round(output.ceilingUsd * 100),
+        ceilingCents: Math.round(output.ceilingUsd! * 100),
         currency: "USD",
         maxDeliveryDays: output.maxDeliveryDays,
         allowedSellers: output.allowedSellers.filter((s) => SELLERS.some((x) => x.id === s)),
@@ -150,6 +162,12 @@ export class MandateExtractionError extends Error {
   constructor(public problems: string[]) {
     super(problems.join(" "));
   }
+}
+
+/** True only if the amount literally appears as a number in the user's text (e.g. "$60", "60.00", "1,000"). */
+export function budgetIsStated(text: string, usd: number): boolean {
+  const numbers = (text.match(/\d[\d,]*(?:\.\d+)?/g) ?? []).map((n) => Number(n.replace(/,/g, "")));
+  return numbers.some((n) => Math.abs(n - usd) < 0.005);
 }
 
 export function normalisePlatform(p: string): string | null {

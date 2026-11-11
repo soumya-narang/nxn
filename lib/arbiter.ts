@@ -119,12 +119,16 @@ export async function arbitrate(input: ArbiterInput, opts: { useLlm?: boolean } 
 
   // 3. User check: complaint is about a constraint that is absent from the mandate.
   const mentioned = COMPLAINT_VOCAB.filter((v) => v.re.test(complaint));
-  const absent = mentioned.filter((v) =>
-    v.kind === "compatibility"
-      ? !rules.compatibility.some((c) => c.toLowerCase() === v.value.toLowerCase())
-      : !rules.requiredFeatures.some((f) => f.toLowerCase() === v.value.toLowerCase()),
+  // "Absent" means: not a structured rule AND never mentioned in the user's own words or notes.
+  const mandateText = `${rawIntent}\n${rules.notes.join("\n")}`;
+  const absent = mentioned.filter(
+    (v) =>
+      !v.re.test(mandateText) &&
+      (v.kind === "compatibility"
+        ? !rules.compatibility.some((c) => c.toLowerCase() === v.value.toLowerCase())
+        : !rules.requiredFeatures.some((f) => f.toLowerCase() === v.value.toLowerCase())),
   );
-  if (absent.length && rules.notes.length === 0) {
+  if (absent.length) {
     const names = [...new Set(absent.map((a) => a.value))];
     return {
       fault: "USER",
@@ -140,6 +144,29 @@ export async function arbitrate(input: ArbiterInput, opts: { useLlm?: boolean } 
         },
       ],
     };
+  }
+
+  // 3b. The listing the agent saw explicitly promised what the complaint is about.
+  // The agent complied, so it cannot be at fault, and the LLM may not overrule that.
+  // Whether the delivered item matches the listing needs evidence: manual review.
+  const satisfied = mentioned.filter((v) =>
+    v.kind === "compatibility"
+      ? snapCompat.includes(v.value.toLowerCase())
+      : snapFeatures.includes(v.value.toLowerCase()),
+  );
+  if (mentioned.length > 0 && satisfied.length === mentioned.length) {
+    const names = [...new Set(satisfied.map((s) => s.value))];
+    return manual(
+      `The listing the agent bought explicitly promised ${names.join(", ")}, and the listing has not changed since. The agent stayed within the mandate. If the delivered item does not match its listing, that is a merchant issue that needs evidence of the delivered item.`,
+      [
+        complaintLine,
+        mandateLine,
+        ...satisfied.map((s): Evidence => ({
+          source: "snapshot",
+          text: s.kind === "compatibility" ? `Compatible with: ${snap.compatibility.join(", ")}` : `Features: ${snap.features.join(", ")}`,
+        })),
+      ],
+    );
   }
 
   // 4. Free-text ambiguity: only now is the LLM consulted.

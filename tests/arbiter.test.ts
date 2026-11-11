@@ -50,6 +50,31 @@ describe("arbiter", () => {
     expect(v.reasoning).toMatch(/never stated/);
   });
 
+  it("USER responsibility even when the mandate has unrelated free-text notes", async () => {
+    const { base } = setup(
+      "cam-pixelon-p1",
+      rules({ compatibility: [], notes: ["no subscriptions"] }),
+      "Buy me a webcam under $60, USB-C, arriving this week, no subscriptions.",
+    );
+    const v = await arbitrate(base("It doesn't work with my MacBook."));
+    expect(v.fault).toBe("USER");
+  });
+
+  it("does not blame the user when they did mention it, only in free text", async () => {
+    const { base } = setup("cam-pixelon-p1", rules({ compatibility: [], notes: ["must work on my Mac"] }));
+    const v = await arbitrate(base("It doesn't work with my Mac."));
+    expect(v.fault).not.toBe("USER");
+  });
+
+  it("never blames the agent when the listing explicitly promised what the complaint is about", async () => {
+    const intent = "Buy me a webcam under $60 that works with my MacBook, USB-C";
+    const { base } = setup("cam-clearview-c2", rules({ compatibility: ["macOS"] }), intent);
+    const v = await arbitrate(base("This isn't what I asked for. It doesn't work with my MacBook."));
+    expect(v.fault).toBeNull();
+    expect(v.reasoning).toMatch(/explicitly promised macOS/);
+    expect(v.evidence.some((e) => e.text.includes("macOS"))).toBe(true);
+  });
+
   it("goes to manual review when only free text could decide and no LLM is configured", async () => {
     const { base } = setup("cam-clearview-c2", rules({ notes: ["looks good on a bookshelf"] }));
     const v = await arbitrate(base("It's ugly."));
