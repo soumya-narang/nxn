@@ -1,0 +1,16 @@
+node_modules/
+.next/
+out/
+*.tsbuildinfo
+next-env.d.ts
+
+# secrets
+.env
+.env*.local
+
+# ephemeral demo database
+.data/
+
+# logs
+npm-debug.log*
+*.log
