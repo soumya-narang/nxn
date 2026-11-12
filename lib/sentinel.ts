@@ -86,7 +86,14 @@ export async function runMandate(db: DB, paypal: PayPalGateway, mandateId: strin
   if (m.status !== "AUTHORIZED" || !m.authorizationId) throw new HttpError(409, `Mandate is ${m.status}; it must be AUTHORIZED to run`);
   if (!claimRun(db, m.id)) throw new HttpError(409, "This mandate has already been run");
 
-  const agent = await runAgent(db, m, mode);
+  // The run is claimed: whatever happens below, the hold must end up captured or voided, never stranded.
+  let agent: AgentRun;
+  try {
+    agent = await runAgent(db, m, mode);
+  } catch (err) {
+    appendEvent(db, m.id, "agent_fallback", { reason: shortError(err), to: "none" });
+    agent = { proposal: null, modeUsed: mode, fallbackReason: shortError(err) };
+  }
 
   if (!agent.proposal) {
     await voidHold(db, paypal, m, "The agent did not propose a purchase");

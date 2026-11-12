@@ -39,6 +39,9 @@ export function confidenceThreshold(): number {
 
 const PLATFORMS = ["Windows", "macOS", "Linux", "ChromeOS"];
 
+/** Listing fields that describe the product itself, as opposed to commercial terms. */
+const MATERIAL_FIELDS = new Set<string>(["title", "description", "features", "compatibility", "seller", "addOns", "category"]);
+
 /** Words a complaint might use that map to a checkable constraint. */
 const COMPLAINT_VOCAB: { re: RegExp; kind: "compatibility" | "feature"; value: string }[] = [
   { re: /\b(mac|macs|macbook\w*|imac|macos|os x)\b/i, kind: "compatibility", value: "macOS" },
@@ -70,8 +73,10 @@ export async function arbitrate(input: ArbiterInput, opts: { useLlm?: boolean } 
   const complaintLine: Evidence = { source: "complaint", text: complaint };
 
   // 1. Merchant check: does the listing now differ from what the agent saw?
-  if (currentListing && listingHash(currentListing) !== snapshot.hash) {
-    const diffs = diffListings(snap, currentListing);
+  // Only changes to what was *promised* count. A later price or delivery-time
+  // change says nothing about whether the item matches its description.
+  const diffs = currentListing && listingHash(currentListing) !== snapshot.hash ? diffListings(snap, currentListing).filter((d) => MATERIAL_FIELDS.has(d.field)) : [];
+  if (diffs.length) {
     return {
       fault: "MERCHANT",
       confidence: 0.95,

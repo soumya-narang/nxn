@@ -43,6 +43,13 @@ describe("arbiter", () => {
     expect(v.evidence.some((e) => e.source === "current_listing" && e.text.includes("USB-A"))).toBe(true);
   });
 
+  it("a price change after purchase is not merchant fault", async () => {
+    const { db, base } = setup("cam-pixelon-p1", rules({ compatibility: [] }), "Buy me a webcam under $60, USB-C, arriving this week");
+    applyMerchantEdit(db, "cam-pixelon-p1", { priceCents: 2999, deliveryDays: 5 });
+    const v = await arbitrate({ ...base("It doesn't work with my Mac."), currentListing: getListing(db, "cam-pixelon-p1") });
+    expect(v.fault).toBe("USER");
+  });
+
   it("USER responsibility: complaint about a constraint never stated", async () => {
     const { base } = setup("cam-pixelon-p1", rules({ compatibility: [] }), "Buy me a webcam under $60, USB-C, arriving this week");
     const v = await arbitrate(base("It doesn't work with my Mac."));

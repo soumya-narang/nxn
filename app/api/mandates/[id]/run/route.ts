@@ -10,7 +10,7 @@ export const maxDuration = 120;
 /** POST: run the agent, gate its proposal through R1-R7, then capture or void. */
 export const POST = handle(async (req: Request, { params }: IdParams) => {
   const { id } = await params;
-  const { agentMode } = await readJson(req, z.object({ agentMode: z.enum(["live", "cached"]).optional() }));
+  const { agentMode } = await readJson(req, z.object({ agentMode: z.enum(["live", "sloppy", "cached"]).optional() }));
   const { db, paypal } = services();
   const mode = agentMode ?? (llmAvailable() ? "live" : "cached");
   const r = await runMandate(db, paypal, id, mode);

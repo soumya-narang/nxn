@@ -16,4 +16,4 @@ export async function api<T>(path: string, init?: { method?: string; body?: unkn
   return json as T;
 }
 
-export const usd = (cents: number) => `$${(cents / 100).toFixed(2)}`;
+export { usd } from "./format";

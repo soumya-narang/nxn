@@ -1,5 +1,5 @@
 import type { DB } from "./db";
-import { getListing, listingHash } from "./catalog";
+import { computeTotal, getListing, listingHash } from "./catalog";
 import { getSnapshots, getTrace, verifyChain } from "./recorder";
 import { getDecision, getVerdict, getWebhooks, listMandates, requireMandate } from "./store";
 import { getScenario } from "./scenarios";
@@ -13,7 +13,23 @@ export function mandateView(db: DB, id: string) {
   const snapshots = getSnapshots(db, id);
   const purchased = decision?.listingId ? getListing(db, decision.listingId) : null;
   const purchasedSnapshot = decision?.listingId ? [...snapshots].reverse().find((s) => s.listingId === decision.listingId) : undefined;
+  // The total the firewall evaluated, split into its parts (from the listing as the agent saw it).
+  const evaluated = purchasedSnapshot?.content ?? purchased;
+  const breakdown = decision && evaluated ? computeTotal(evaluated, decision.addOnIds) : null;
   return {
+    breakdown: breakdown
+      ? {
+          itemCents: breakdown.itemCents,
+          shippingCents: breakdown.shippingCents,
+          taxCents: breakdown.taxCents,
+          addOns: decision!.addOnIds
+            .map((id) => evaluated!.addOns.find((a) => a.id === id))
+            .filter((a): a is NonNullable<typeof a> => Boolean(a))
+            .map((a) => ({ id: a.id, name: a.name, cents: a.priceCents, recurring: a.recurring })),
+          totalCents: breakdown.totalCents,
+          title: evaluated!.title,
+        }
+      : null,
     mandate,
     scenario: getScenario(mandate.scenario) ?? null,
     trace,
@@ -46,6 +62,10 @@ export function ledgerRows(db: DB) {
       scenario: m.scenario,
       status: m.status,
       ceiling: formatUsd(m.ceilingCents),
+      ceilingCents: m.ceilingCents,
+      totalCents: d?.totalCents ?? null,
+      capturedCents: d?.capturedAmountCents ?? null,
+      refunded: Boolean(v?.refundId),
       orderId: m.paypalOrderId,
       authorizationId: m.authorizationId,
       outcome: d?.outcome ?? null,
