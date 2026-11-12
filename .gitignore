@@ -14,3 +14,7 @@ next-env.d.ts
 # logs
 npm-debug.log*
 *.log
+
+# local documents and tool files, not part of the project
+*.pdf
+AGENTS.md
